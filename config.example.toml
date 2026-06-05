@@ -1,0 +1,10 @@
+[provider]
+name = "deepseek"
+base_url = "https://api.deepseek.com"
+model = "deepseek-chat"
+# api_key = "YOUR_API_KEY_HERE"  # prefer ASK_API_KEY or macOS Keychain
+
+[ui]
+default_action = "ask"
+# history_lines = 20  # recent shell commands sent as context (0 to disable)
+# candidates = 1

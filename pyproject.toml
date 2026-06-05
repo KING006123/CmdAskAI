@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ask-shell"
+version = "0.1.0"
+description = "Turn natural language into shell commands with confirmation before execution."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=1.40.0",
+  "prompt_toolkit>=3.0.47",
+  "pyperclip>=1.9.0",
+  "rich>=13.7.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+]
+build = [
+  "pyinstaller>=6.0",
+]
+
+[project.scripts]
+ask = "ask.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ask"]
