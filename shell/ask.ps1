@@ -1,6 +1,6 @@
 # Source this in your PowerShell profile to enable Ctrl+G.
 # Add to profile:
-# . "$HOME\.config\ask\ask.ps1"
+# . "$env:APPDATA\ask\ask.ps1"
 
 Set-PSReadLineKeyHandler -Chord 'Ctrl+g' -ScriptBlock {
     $line = $null
