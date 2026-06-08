@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import itertools
 import re
+import sys
+import threading
+import time
 from contextlib import contextmanager
 from collections.abc import Iterator
 
@@ -77,9 +81,43 @@ class CommandStream:
 
 @contextmanager
 def thinking(message: str = "asking…") -> Iterator[None]:
-    """Single-line spinner on stderr for widget/raw mode (clears on exit)."""
-    with console.status(f"[cyan]{message}", spinner="dots"):
+    """Single-line spinner on stderr for widget/raw mode (clears on exit).
+
+    Hand-rolled instead of ``rich``'s ``console.status`` because rich's Live
+    renderer silently no-ops when it decides stderr is not a terminal — which
+    happens in the frozen Windows ``ask.exe`` build, leaving the Ctrl+G widget
+    with no feedback at all. We probe ``stderr.isatty()`` directly and write raw
+    carriage-return frames, so any real console (incl. legacy conhost) shows it.
+    """
+    stream = sys.stderr
+    if not getattr(stream, "isatty", lambda: False)():
+        # stderr is redirected (e.g. piped/logged): stay silent, don't pollute.
         yield
+        return
+
+    stop = threading.Event()
+    # Fixed frame width lets us clear with plain spaces — no ANSI erase code,
+    # which legacy Windows consoles (VT off) would print literally.
+    width = len(message) + 2
+
+    def spin() -> None:
+        for frame in itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"):
+            if stop.is_set():
+                break
+            stream.write(f"\r{frame} {message}")
+            stream.flush()
+            time.sleep(0.08)
+
+    worker = threading.Thread(target=spin, daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        worker.join(timeout=0.3)
+        # Overwrite the spinner line with spaces, then return to column 0.
+        stream.write("\r" + " " * width + "\r")
+        stream.flush()
 
 
 def _strip_fences_streaming(text: str) -> str:
