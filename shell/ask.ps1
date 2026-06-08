@@ -8,9 +8,8 @@ Set-PSReadLineKeyHandler -Chord 'Ctrl+g' -ScriptBlock {
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
     if ([string]::IsNullOrWhiteSpace($line)) { return }
 
-    $cmd = ask --raw $line 2>$null
+    $cmd = ask --raw --stream $line
     if ($LASTEXITCODE -eq 0 -and $cmd) {
         [Microsoft.PowerShell.PSConsoleReadLine]::ReplaceLine($cmd)
     }
 }
-

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from openai import OpenAI
 from openai import OpenAIError
@@ -11,6 +13,9 @@ from ask.prompt import build_explain_prompt, build_system_prompt
 
 class LlmError(RuntimeError):
     """Raised when the configured LLM provider cannot return a usable answer."""
+
+
+StreamCallback = Callable[[str], None]
 
 
 def gen_command(natural_language: str, ctx: str, cfg: AskConfig) -> str:
@@ -29,6 +34,34 @@ def gen_command(natural_language: str, ctx: str, cfg: AskConfig) -> str:
         raise LlmError(f"LLM request failed: {exc}") from exc
 
     content = resp.choices[0].message.content or ""
+    command = strip_fences(content)
+    if not command:
+        raise LlmError("LLM returned an empty command.")
+    return command
+
+
+def gen_command_stream(
+    natural_language: str,
+    ctx: str,
+    cfg: AskConfig,
+    on_delta: StreamCallback | None = None,
+) -> str:
+    client = OpenAI(base_url=cfg.base_url, api_key=cfg.api_key)
+    try:
+        stream = client.chat.completions.create(
+            model=cfg.model,
+            max_tokens=300,
+            temperature=0.1,
+            messages=[
+                {"role": "system", "content": build_system_prompt(ctx)},
+                {"role": "user", "content": natural_language},
+            ],
+            stream=True,
+        )
+        content = _collect_stream(stream, on_delta)
+    except OpenAIError as exc:
+        raise LlmError(f"LLM request failed: {exc}") from exc
+
     command = strip_fences(content)
     if not command:
         raise LlmError("LLM returned an empty command.")
@@ -136,6 +169,70 @@ def gen_next_step(
     if not next_command:
         raise LlmError("LLM returned an empty next command.")
     return next_command
+
+
+def gen_next_step_stream(
+    original_nl: str,
+    command: str,
+    result: str,
+    ctx: str,
+    cfg: AskConfig,
+    on_delta: StreamCallback | None = None,
+) -> str:
+    client = OpenAI(base_url=cfg.base_url, api_key=cfg.api_key)
+    try:
+        stream = client.chat.completions.create(
+            model=cfg.model,
+            max_tokens=300,
+            temperature=0.1,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a shell assistant. The user ran a command. "
+                        "Suggest the single most useful next shell command based on the output. "
+                        "Output only the command, no explanation. Never include markdown fences."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Original task:\n{original_nl}\n\n"
+                        f"Command run:\n{command}\n\n"
+                        f"Command output:\n{result}\n\n"
+                        f"Context:\n{ctx}"
+                    ),
+                },
+            ],
+            stream=True,
+        )
+        content = _collect_stream(stream, on_delta)
+    except OpenAIError as exc:
+        raise LlmError(f"LLM request failed: {exc}") from exc
+
+    next_command = strip_fences(content)
+    if not next_command:
+        raise LlmError("LLM returned an empty next command.")
+    return next_command
+
+
+def _collect_stream(stream: Iterable[Any], on_delta: StreamCallback | None = None) -> str:
+    parts: list[str] = []
+    for chunk in stream:
+        delta = _stream_delta_content(chunk)
+        if not delta:
+            continue
+        parts.append(delta)
+        if on_delta is not None:
+            on_delta(delta)
+    return "".join(parts)
+
+
+def _stream_delta_content(chunk: Any) -> str:
+    try:
+        return chunk.choices[0].delta.content or ""
+    except (AttributeError, IndexError, TypeError):
+        return ""
 
 
 def strip_fences(text: str) -> str:

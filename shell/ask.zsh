@@ -4,7 +4,7 @@
 _ask_widget() {
   [[ -z "$BUFFER" ]] && return
   local cmd
-  cmd=$(ask --raw "$BUFFER") || return
+  cmd=$(ask --raw --stream "$BUFFER") || return
   BUFFER="$cmd"
   CURSOR=${#BUFFER}
   zle redisplay
